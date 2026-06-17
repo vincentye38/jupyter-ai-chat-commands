@@ -35,15 +35,16 @@ export class PersonaCommandProvider implements IChatCommandProvider {
   async listCommandCompletions(
     inputModel: IInputModel
   ): Promise<ChatCommand[]> {
-    // Match the activation rules of the legacy SlashCommandProvider:
-    // suggestions only appear when the user's *current word* equals the first
-    // whitespace-delimited token of the input AND that token starts with `/`.
-    const value = inputModel.value ?? '';
-    const firstWord = getFirstWord(value);
-    if (inputModel.currentWord !== firstWord) {
+    // Suggestions only appear when the user's `currentWord` is the leading
+    // command token — i.e. it starts with `/` and the only thing in front of
+    // it is whitespace plus an optional sequence of `@-mention` tokens. This
+    // covers both `/<cmd>` and `@persona /<cmd>` shapes while staying out of
+    // the way of slashes mid-message.
+    const currentWord = inputModel.currentWord ?? '';
+    if (!currentWord.startsWith('/')) {
       return [];
     }
-    if (!firstWord || !firstWord.startsWith('/')) {
+    if (!isLeadingCommandPosition(inputModel.value, currentWord)) {
       return [];
     }
 
@@ -65,7 +66,7 @@ export class PersonaCommandProvider implements IChatCommandProvider {
 
     const suggestions: ChatCommand[] = [];
     for (const cmd of commands) {
-      if (!cmd.name.startsWith(firstWord)) {
+      if (!cmd.name.startsWith(currentWord)) {
         continue;
       }
       suggestions.push({
@@ -97,21 +98,27 @@ function getExistingMentions(inputModel: IInputModel): Set<string> {
 }
 
 /**
- * Returns the first whitespace-delimited token in `input`, or `null` if there
- * is none. Mirrors the helper used by the legacy SlashCommandProvider so that
- * activation rules stay consistent.
+ * Returns true if `currentWord` (a `/...` token) is the first non-whitespace
+ * token in `value` after stripping any sequence of leading `@mention` tokens.
+ * This is what makes `@persona /cmd` count as the leading command position
+ * even though `@persona` is technically the first whitespace-delimited word.
  */
-function getFirstWord(input: string): string | null {
-  let start = 0;
-  while (start < input.length && /\s/.test(input[start])) {
-    start++;
+function isLeadingCommandPosition(
+  value: string | undefined,
+  currentWord: string
+): boolean {
+  if (!value || !currentWord) {
+    return false;
   }
-  let end = start;
-  while (end < input.length && !/\s/.test(input[end])) {
-    end++;
+  let body = value.replace(/^\s+/, '');
+  while (true) {
+    const m = body.match(/^@[\w-]+\s+/);
+    if (!m) {
+      break;
+    }
+    body = body.slice(m[0].length);
   }
-  const firstWord = input.substring(start, end);
-  return firstWord ? firstWord : null;
+  return body.startsWith(currentWord);
 }
 
 export const personaCommandPlugin: JupyterFrontEndPlugin<void> = {

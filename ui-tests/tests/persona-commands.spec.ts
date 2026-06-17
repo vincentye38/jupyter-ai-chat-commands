@@ -131,4 +131,19 @@ test.describe('#persona-commands', () => {
     await expect(chatCommandName.filter({ hasText: '/clear' })).toHaveCount(0);
     await expect(chatCommandName.filter({ hasText: '/login' })).toHaveCount(0);
   });
+
+  test('should list persona /commands after an @-mention', async ({ page }) => {
+    const chatPanel = await openChat(page, FILENAME);
+    const input = chatPanel
+      .locator('.jp-chat-input-container')
+      .getByRole('combobox');
+    const chatCommandName = page.locator('.jp-chat-command-name');
+
+    // The realistic flow: user types `@SomePersona ` then `/` to discover the
+    // commands that persona supports. Activation must still fire here.
+    await input.pressSequentially('@SomePersona /');
+    await expect(chatCommandName.filter({ hasText: '/clear' })).toHaveCount(1);
+    await expect(chatCommandName.filter({ hasText: '/help' })).toHaveCount(1);
+    await expect(chatCommandName.filter({ hasText: '/login' })).toHaveCount(1);
+  });
 });
